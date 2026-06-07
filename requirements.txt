@@ -1,0 +1,5 @@
+SpeechRecognition
+pyaudio
+pygame
+vosk
+Pillow
