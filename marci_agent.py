@@ -1,17 +1,15 @@
 """
 Marci Voice Agent — Talking Ben style
 =====================================
-Super lightweight. Just listens and reacts with sounds.
+Единый блок: голос + команды.
+- Слушает микрофон (Vosk / Google Speech)
+- Распознаёт пробуждение по слову "Марси"
+- Реагирует звуками и картинками
+- Idle-режим с so_long звуком после 10-15 мин тишины
+- Команды ТОЛЬКО из commands.json (через CommandHandler)
 
-Like "My Talking Ben":
-- Marci sits idle
-- When you say something, Marci reacts with a random voice line
-- Rare sound: 10% chance on any reaction
-- So long sound: plays after 10-15 min of silence
-- Can interrupt long sounds with "стоп", "хватит", "завали ебало" etc.
-
-Uses Vosk for fast OFFLINE wake word detection (no network delay!)
-+ Google Speech for command recognition (when needed).
+Набор команд не зашит в коде — всё в commands.json.
+Пользователь открывает commands.json в блокноте и добавляет/меняет команды.
 """
 
 import signal
@@ -30,6 +28,8 @@ import speech_recognition as sr
 from sound_manager import play_sound, play_file, stop_all
 from image_manager import show_random_image
 from resource_path import resource_path
+from command_handler import CommandHandler
+
 
 # ─── Config ───────────────────────────────────────────────────
 
@@ -38,16 +38,22 @@ RARE_CHANCE = 0.10          # 10% chance for rare sound
 IDLE_MIN_SECS = 10 * 60     # 10 min idle before so_long
 IDLE_MAX_SECS = 15 * 60     # 15 min idle before so_long
 
+
 # ─── State ────────────────────────────────────────────────────
 
 running = True
 so_long_playing = False
+
+cmd_handler = CommandHandler()
+
 
 def signal_handler(sig, frame):
     global running
     print("\n[Marci] Bye!")
     running = False
 
+
+# ─── Wake / Stop helpers ──────────────────────────────────────
 
 def check_wake_word(text: str) -> bool:
     """Check if text contains 'Марси' with fuzzy matching."""
@@ -76,11 +82,32 @@ def check_stop_command(text: str) -> bool:
     return False
 
 
+# ─── Sound reaction helpers ───────────────────────────────────
+
 def simple_react() -> str:
     """Random reaction with 10% rare chance — just like Talking Ben!"""
     if random.random() < RARE_CHANCE:
         return "rare"
     return random.choice(["move", "laugh", "deny", "thanks", "immortality", "damage"])
+
+
+def random_react_exclude_rare() -> str:
+    """Random reaction, but NEVER plays the rare sound."""
+    return random.choice(["move", "laugh", "deny", "thanks", "immortality", "damage"])
+
+
+# ─── Microphone helpers ───────────────────────────────────────
+
+def find_usb_mic():
+    """Find USB microphone device index."""
+    p = pyaudio.PyAudio()
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info["maxInputChannels"] > 0 and "usb" in info["name"].lower():
+            p.terminate()
+            return i
+    p.terminate()
+    return None
 
 
 def listen_with_vosk(model, device_index=None, timeout=10, stop_check=None):
@@ -119,7 +146,6 @@ def listen_with_vosk(model, device_index=None, timeout=10, stop_check=None):
     
     try:
         while time.time() - start_time < timeout:
-            # Check if we should abort (e.g. stop command detected)
             if stop_check and stop_check():
                 break
 
@@ -137,11 +163,9 @@ def listen_with_vosk(model, device_index=None, timeout=10, stop_check=None):
                 ptext = partial.get("partial", "")
                 if ptext and ptext != last_partial:
                     last_partial = ptext
-                    # Check wake word in partials for INSTANT detection!
                     if check_wake_word(ptext):
                         result_text = ptext + " "
                         break
-                    # Check stop command in partials — interrupt long sounds
                     if check_stop_command(ptext):
                         result_text = ptext + " "
                         break
@@ -158,18 +182,6 @@ def listen_with_vosk(model, device_index=None, timeout=10, stop_check=None):
 
     result_text = result_text.strip()
     return result_text if result_text else None
-
-
-def find_usb_mic():
-    """Find USB microphone device index."""
-    p = pyaudio.PyAudio()
-    for i in range(p.get_device_count()):
-        info = p.get_device_info_by_index(i)
-        if info["maxInputChannels"] > 0 and "usb" in info["name"].lower():
-            p.terminate()
-            return i
-    p.terminate()
-    return None
 
 
 def listen_command_google(device_index=None, timeout=5):
@@ -196,16 +208,16 @@ def listen_command_google(device_index=None, timeout=5):
         return None
 
 
+# ─── Idle so_long thread ──────────────────────────────────────
+
 def so_long_loop(model, device_index, last_interaction_ref):
     """
     Background thread: after 10-15 min idle, play so_long sound.
-    Can be interrupted by stop commands.
-    last_interaction_ref: dict with 'time' key, updated by main thread.
+    Can be interrupted by stop commands or wake word.
     """
     global so_long_playing, running
     
     while running:
-        # Wait for idle period — reset timer if agent was used
         idle_wait = random.randint(IDLE_MIN_SECS, IDLE_MAX_SECS)
         start_idle = time.time()
         
@@ -214,7 +226,6 @@ def so_long_loop(model, device_index, last_interaction_ref):
             if elapsed >= idle_wait:
                 break
             
-            # Reset timer if agent was interacted with
             if time.time() - last_interaction_ref['time'] < 2:
                 start_idle = time.time()
                 idle_wait = random.randint(IDLE_MIN_SECS, IDLE_MAX_SECS)
@@ -224,13 +235,11 @@ def so_long_loop(model, device_index, last_interaction_ref):
         if not running:
             break
         
-        # Play so_long sound
         so_long_playing = True
         print("  😴 So long... playing idle sound")
         play_sound("so_long", blocking=False)
         show_random_image()
         
-        # Listen for stop command or wake word to interrupt
         while so_long_playing and running:
             text = listen_with_vosk(model, device_index=device_index, timeout=3)
             if text:
@@ -240,13 +249,14 @@ def so_long_loop(model, device_index, last_interaction_ref):
                     stop_all()
                     so_long_playing = False
                     break
-            # Check if main thread stopped so_long
             if not so_long_playing:
                 break
             time.sleep(0.1)
         
         so_long_playing = False
 
+
+# ─── Main ─────────────────────────────────────────────────────
 
 def main():
     global running, so_long_playing
@@ -259,7 +269,7 @@ def main():
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Startup sound — confirms the program is running (no console/window)
+    # Startup sound
     try:
         play_sound("wake", blocking=True)
     except Exception as e:
@@ -268,7 +278,7 @@ def main():
     # Find best mic
     device_index = find_usb_mic()
     
-    # Load Vosk for fast offline wake word detection
+    # Load Vosk
     if os.path.exists(VOSK_MODEL_PATH):
         print("[Vosk] Loading model for fast wake word detection...")
         model = vosk.Model(VOSK_MODEL_PATH)
@@ -297,11 +307,11 @@ def main():
     # Shared state for idle timer
     last_interaction = {'time': time.time()}
     
-    # Start so_long idle thread (only with Vosk for offline detection)
+    # Start so_long idle thread (only with Vosk)
     if use_vosk:
         idle_thread = threading.Thread(
-            target=so_long_loop, 
-            args=(model, device_index, last_interaction), 
+            target=so_long_loop,
+            args=(model, device_index, last_interaction),
             daemon=True
         )
         idle_thread.start()
@@ -312,7 +322,6 @@ def main():
         try:
             if state == "idle":
                 if so_long_playing:
-                    # Agent was woken during so_long — stop it
                     stop_all()
                     so_long_playing = False
 
@@ -321,7 +330,6 @@ def main():
                     if text:
                         print(f"  heard: \"{text}\"")
                         
-                        # Check for stop command first (interrupts any sound)
                         if check_stop_command(text):
                             stop_all()
                             so_long_playing = False
@@ -370,12 +378,32 @@ def main():
                     print()
                     continue
 
-                # React regardless — Talking Ben style!
-                reaction = simple_react()
+                # Try to process as a command first
                 if text:
-                    print(f"  said: \"{text}\" → {reaction}")
+                    cmd_name, success = cmd_handler.process(text)
+                    if cmd_name is not None:
+                        # Command was matched
+                        if success:
+                            print(f"  ✅ Команда '{cmd_name}' выполнена!")
+                            reaction = random_react_exclude_rare()
+                        else:
+                            print(f"  ❌ Команда '{cmd_name}' не выполнена!")
+                            reaction = "deny"
+                        print(f"  said: \"{text}\" → {reaction}")
+                        play_sound(reaction, blocking=False)
+                        show_random_image()
+                        state = "idle"
+                        print()
+                        continue
+                    else:
+                        # No command matched — random react but exclude rare
+                        reaction = random_react_exclude_rare()
+                        print(f"  said: \"{text}\" → {reaction}")
                 else:
+                    # No text at all — standard reaction with rare chance
+                    reaction = simple_react()
                     print(f"  → {reaction}")
+
                 play_sound(reaction, blocking=False)
                 show_random_image()
 

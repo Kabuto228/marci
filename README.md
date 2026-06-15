@@ -1,43 +1,240 @@
-# 🎤 Marci Voice Agent — Talking Ben Style
+# ⚔️ MARCI — ГОЛОСОВОЙ ПОМОЩНИК ⚔️
 
-Like "My Talking Ben" but with Marci from Dota 2!
+**Marci из Dota 2 теперь живёт у тебя на компе.**
 
-## How it works
+Скажи **"Марси"** — и она проснётся.  
+Скажи **"открой браузер"** — и Chrome сам запустится.  
+Скажи **"выключи компьютер"** — и система вырубится.  
+Никаких лишних телодвижений. Только голос.
 
-1. Marci sits idle, listening
-2. Say **"Марси"** (wake word)
-3. Marci perks up (wake sound)
-4. Say anything — Marci reacts with a random voice line
-5. Back to idle
+---
 
-Simple. Lightweight. No heavy models.
+## 🔥 ЧТО УМЕЕТ
 
-## Install
+### 🗣️ Talking Ben — стиль
+Проснулась по голосу — реагирует случайной голосовой фразой и картинкой на весь экран. Как мой говорящий Бен, только Marci.
 
+### 🧠 Умные команды
+Скажи фразу — компьютер выполнит команду.  
+Все команды хранятся в **`commands.json`**.  
+Открыл блокнотом, добавил, сохранил — и команда работает.
+
+### 💀 Звуковое сопровождение
+Каждая реакция — уникальный голос Marci из Dota 2.  
+Редкий звук — 10% шанс выпасть на любой реакции.  
+Если команда провалилась — звук отрицания (deny).  
+После 10–15 минут тишины — случайная фраза so_long, чтоб напомнить о себе.
+
+---
+
+## 📦 УСТАНОВКА
+
+### 1. Клонируй репозиторий
 ```bash
-pip install SpeechRecognition pyaudio pygame
+git clone https://github.com/Kabuto228/marci.git
+cd marci
 ```
 
-## Run
+### 2. Установи зависимости
+```bash
+pip install -r requirements.txt
+```
 
+### 3. Скачай Vosk-модель для русского языка
+Быстрое офлайн-распознавание без интернета.  
+Скачай и распакуй в папку проекта:
+
+🔗 [vosk-model-small-ru-0.22](https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip)
+
+```bash
+# После распаковки структура должна быть такой:
+# vosk-model-small-ru-0.22/
+#   ├── am/
+#   ├── conf/
+#   ├── graph/
+#   ├── ivector/
+#   └── README
+```
+
+### 4. Запуск
 ```bash
 python marci_agent.py
 ```
 
-## Sounds
+> Если Vosk-модель не найдена — Marci автоматически переключится на Google Speech API (требуется интернет).
 
-Put MP3 files in `sounds/` folder. Current sounds:
+---
 
-| Intent | Files |
-|--------|-------|
-| wake | Vo_marci_marci_move.mp3, _2.mp3, _3.mp3 |
-| deny | Vo_marci_marci_deny.mp3 |
-| immortality | Vo_marci_marci_immortality.mp3 |
-| laugh | Vo_marci_marci_laugh.mp3 |
-| move | Vo_marci_marci_move.mp3, _2.mp3, _3.mp3 |
-| damage | Vo_marci_marci_taking_damage.mp3 |
-| thanks | Vo_marci_marci_thanks.mp3 |
+## ⚙️ КОМАНДЫ
 
-## Reactions
+Все команды хранятся в **`commands.json`**.  
+Открываешь файл блокнотом, добавляешь свои — ничего править в коде не надо.
 
-**Pure random!** Just like Talking Ben — Marci reacts with a random voice line every time, no matter what you say.
+### 🖥️ Система
+| Фраза | Действие |
+|-------|----------|
+| "открой браузер", "запусти хром" | Chrome |
+| "открой консоль", "терминал" | Командная строка |
+| "открой проводник" | Проводник |
+| "диспетчер задач" | Диспетчер задач |
+| "открой настройки" | Параметры Windows |
+| "панель управления" | Панель управления |
+| "открой поиск" | Поиск Windows |
+| "сверни всё", "показать рабочий стол" | Свернуть все окна |
+| "закрой окно" | Alt+F4 |
+| "переключи окно" | Alt+Tab |
+
+### 🪟 Папки
+| Фраза | Действие |
+|-------|----------|
+| "открой загрузки" | Папка Загрузки |
+| "открой документы" | Папка Документы |
+| "открой рабочий стол" | Папка Рабочий стол |
+| "открой корзину" | Корзина |
+| "открой диск c" | Диск C:\ |
+
+### 🔊 Звук
+| Фраза | Действие |
+|-------|----------|
+| "сделай громче" | Громкость + |
+| "сделай тише" | Громкость - |
+| "выключи звук" | Mute |
+
+### 📸 Экран
+| Фраза | Действие |
+|-------|----------|
+| "сделай скриншот" | Скриншот в буфер |
+| "ножницы" | Инструмент нарезки |
+
+### ⚡ Питание
+| Фраза | Действие |
+|-------|----------|
+| "заблокируй компьютер" | Блокировка |
+| "выключи компьютер" | Shutdown (через 5 сек) |
+| "перезагрузи компьютер" | Reboot (через 5 сек) |
+| "спящий режим" | Sleep |
+
+### 🎮 Программы
+| Фраза | Действие |
+|-------|----------|
+| "напиши текст", "блокнот" | Блокнот |
+| "калькулятор", "посчитай" | Калькулятор |
+| "открой пейнт" | Paint |
+| "открой ютуб", "включи видео" | YouTube |
+| "найди в интернете", "загугли" | Google |
+| "открой стим" | Steam |
+| "открой дискорд" | Discord |
+| "открой телеграм" | Telegram |
+| "открой доту" | Dota 2 |
+
+---
+
+## 🧩 КАК ДОБАВИТЬ СВОЮ КОМАНДУ
+
+Открой `commands.json` в любом текстовом редакторе и добавь блок:
+
+```json
+"open_notepad": {
+  "triggers": ["открой блокнот", "блокнот", "заметки"],
+  "action": "notepad.exe",
+  "description": "Открыть блокнот"
+}
+```
+
+### Параметры:
+- **triggers** — фразы, на которые сработает команда (чем больше, тем лучше)
+- **action** — полная shell-команда. Всё что можно ввести в cmd.exe
+- **description** — описание для красоты
+
+### Примеры action для Windows:
+```
+"start chrome"                          — Chrome
+"notepad.exe"                           — Блокнот
+"calc.exe"                              — Калькулятор
+"start steam://rungameid/570"           — Dota 2 через Steam
+"start https://www.youtube.com"         — YouTube
+"explorer"                              — Проводник
+"taskmgr"                               — Диспетчер задач
+"shutdown /s /t 5"                      — Выключение через 5 сек
+"powershell -Command (New-Object -ComObject WScript.Shell).SendKeys([char]175)"  — Громкость+
+```
+
+> **Для Linux/Mac** — просто пропиши свои команды.  
+> Например: `"xdg-open https://google.com"`, `"gedit"`, `"systemctl poweroff"`
+
+---
+
+## 🛠️ СБОРКА EXE
+
+```bash
+pip install pyinstaller
+pyinstaller marci.spec --noconfirm --clean
+```
+
+Готовый файл: `dist/Marci.exe`
+
+---
+
+## 📁 СТРУКТУРА ПРОЕКТА
+
+```
+marci/
+├── marci_agent.py          # Главный скрипт (голос + команды)
+├── command_handler.py      # Чистый исполнитель команд из JSON
+├── commands.json           # Твой личный набор команд
+├── sound_manager.py        # Управление звуками
+├── image_manager.py        # Показ картинок
+├── resource_path.py        # Пути к ресурсам
+├── marci.spec              # Конфиг для PyInstaller
+├── marci.ico               # Иконка
+├── requirements.txt        # Зависимости
+├── README.md               # Этот файл
+├── sounds/                 # Папка с MP3
+│   ├── Vo_marci_marci_deny.mp3
+│   ├── Vo_marci_marci_laugh.mp3
+│   ├── Vo_marci_marci_move.mp3
+│   ├── Vo_marci_marci_move_2.mp3
+│   ├── Vo_marci_marci_move_3.mp3
+│   ├── Vo_marci_marci_immortality.mp3
+│   ├── Vo_marci_marci_taking_damage.mp3
+│   ├── Vo_marci_marci_thanks.mp3
+│   ├── rare.mp3
+│   └── so_long.mp3
+├── images/                 # Папка с картинками для попапов
+│   ├── cut.jpg
+│   ├── m.jpg
+│   ├── mar.jpg
+│   ├── marcury.jpg
+│   └── marsy.jpg
+└── vosk-model-small-ru-0.22/  # Vosk модель (оффлайн)
+```
+
+---
+
+## 🧠 КАК ЭТО РАБОТАЕТ
+
+1. **Idle** — Marci слушает микрофон через Vosk (оффлайн, мгновенно)
+2. **Wake word** — слышит "Марси" → просыпается, играет звук, показывает картинку
+3. **Listening** — слушает следующую фразу (до 6 секунд)
+4. **Command check** — проверяет фразу по `commands.json`
+   - ✅ Нашла команду → выполнила **+ случайный звук (без rare)**
+   - ❌ Нашла команду, но ошибка → **звук deny**
+   - ❓ Не нашла команду → **случайный звук (без rare)**
+   - 🤷 Тишина → **случайный звук (с шансом rare 10%)**
+5. Через 10–15 минут бездействия — **so_long звук + картинка** (напоминание)
+6. Скажи **"стоп"**, **"хватит"**, **"заткнись"** — Marci заткнётся
+
+---
+
+## 🎯 ФИЛОСОФИЯ
+
+**LEGO Duplo.**  
+Голосовой движок — один блок.  
+Обработчик команд — второй блок.  
+JSON с командами — третья деталь.  
+Не нравится что-то — перепиши только это.  
+Не трогай остальное.
+
+---
+
+**Marci. Твой голосовой бро.**
