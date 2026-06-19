@@ -61,7 +61,7 @@ def _send_ctrl_v() -> bool:
         return False
 
 
-def open_notepad_and_write(text: str | None = "") -> str:
+def open_notepad_and_write(text: str | None = "") -> tuple[str, bool]:
     text = _clean_text(text)
     if not text:
         return ("Не услышал текст для записи", False)
@@ -78,7 +78,7 @@ def open_notepad_and_write(text: str | None = "") -> str:
         return (f"Ошибка блокнота: {e}", False)
 
 
-def type_text(text: str | None = "") -> str:
+def type_text(text: str | None = "") -> tuple[str, bool]:
     text = _clean_text(text)
     if not text:
         return ("Не услышал текст для ввода", False)
@@ -90,7 +90,7 @@ def type_text(text: str | None = "") -> str:
     return ("Вставил текст", True)
 
 
-def google_search(query: str | None = "") -> str:
+def google_search(query: str | None = "") -> tuple[str, bool]:
     query = _clean_text(query)
     if not query:
         return ("Не услышал поисковый запрос", False)
@@ -100,7 +100,7 @@ def google_search(query: str | None = "") -> str:
     return (f"Ищу в Google: {query}", True)
 
 
-def youtube_search(query: str | None = "") -> str:
+def youtube_search(query: str | None = "") -> tuple[str, bool]:
     query = _clean_text(query)
     if not query:
         return ("Не услышал запрос для YouTube", False)

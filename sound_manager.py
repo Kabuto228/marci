@@ -24,7 +24,6 @@ SOUND_MAP = {
     "damage": ["Vo_marci_marci_taking_damage.mp3"],
     "thanks": ["Vo_marci_marci_thanks.mp3"],
     "rare": ["rare.mp3"],
-    "so_long": ["so_long.mp3"],
 }
 
 # Global cache of Sound objects — prevents garbage collection during playback
@@ -151,6 +150,12 @@ def play_file(filename: str, blocking: bool = False) -> bool:
     except Exception as e:
         print(f"[SoundManager] Error playing {filename}: {e}")
         return False
+
+
+def sing_rare():
+    """Play rare.mp3 from start to finish for the voice command."""
+    played = play_file("rare.mp3", blocking=True)
+    return ("Спел rare.mp3", played)
 
 
 def stop_all():

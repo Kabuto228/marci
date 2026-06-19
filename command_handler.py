@@ -20,7 +20,6 @@ import json
 import subprocess
 import os
 import importlib
-import re
 import shlex
 
 from resource_path import resource_path

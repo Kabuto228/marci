@@ -19,7 +19,8 @@ import json
 import os
 import re
 import subprocess
-import time
+import unicodedata
+from difflib import SequenceMatcher
 from urllib.parse import urlparse
 
 import spotipy
@@ -34,18 +35,15 @@ SCOPE = (
     "user-read-playback-state "
     "user-modify-playback-state "
     "user-library-modify "
-    "user-read-currently-playing"
+    "user-read-currently-playing "
+    "playlist-read-private "
+    "playlist-read-collaborative"
 )
 
 MEDIA_KEYS = {
     "play_pause": 0xB3,
     "next": 0xB0,
     "previous": 0xB1,
-}
-SYSTEM_VOLUME_KEYS = {
-    "up": 0xAF,
-    "down": 0xAE,
-    "mute": 0xAD,
 }
 SPOTIFY_VOLUME_STEP = 10
 
@@ -61,6 +59,54 @@ ARTIST_MARKERS = (
     "певца",
     "певицы",
     "от",
+)
+
+CYRILLIC_TO_LATIN = str.maketrans({
+    "а": "a",
+    "б": "b",
+    "в": "v",
+    "г": "g",
+    "д": "d",
+    "е": "e",
+    "ё": "e",
+    "ж": "zh",
+    "з": "z",
+    "и": "i",
+    "й": "y",
+    "к": "k",
+    "л": "l",
+    "м": "m",
+    "н": "n",
+    "о": "o",
+    "п": "p",
+    "р": "r",
+    "с": "s",
+    "т": "t",
+    "у": "u",
+    "ф": "f",
+    "х": "h",
+    "ц": "ts",
+    "ч": "ch",
+    "ш": "sh",
+    "щ": "sch",
+    "ъ": "",
+    "ы": "y",
+    "ь": "",
+    "э": "e",
+    "ю": "yu",
+    "я": "ya",
+})
+
+ENGLISH_SOUND_ALIASES = (
+    ("дж", "j"),
+    ("кс", "x"),
+    ("кью", "q"),
+    ("ку", "q"),
+    ("вай", "y"),
+    ("ви", "v"),
+    ("дабл ю", "w"),
+    ("даблю", "w"),
+    ("ф", "f"),
 )
 
 
@@ -221,14 +267,6 @@ class SpotifyController:
 
         return self._send_virtual_key(vk_code)
 
-    def _send_system_volume_key(self, key_name: str) -> bool:
-        """Обычная системная громкость Windows."""
-        vk_code = SYSTEM_VOLUME_KEYS.get(key_name)
-        if vk_code is None:
-            return False
-
-        return self._send_virtual_key(vk_code)
-
     def _send_virtual_key(self, vk_code: int) -> bool:
         """Нажать виртуальную клавишу Windows."""
         if os.name != "nt":
@@ -288,23 +326,6 @@ class SpotifyController:
             return True
         except self._swspotify.SpotifyPaused:
             return False
-        except Exception:
-            return None
-
-    def _spotify_playing_state(self) -> bool | None:
-        """Понять, играет ли сейчас именно Spotify."""
-        local_state = self._local_playing_state()
-        if local_state is not None:
-            return local_state
-
-        if not self._ensure_spotipy(allow_auth=False) or self._spotify is None:
-            return None
-
-        try:
-            playback = self._spotify.current_playback()
-            if playback is None:
-                return False
-            return bool(playback.get("is_playing") and playback.get("item"))
         except Exception:
             return None
 
@@ -480,12 +501,10 @@ class SpotifyController:
 
         try:
             tracks = []
-            used_query = search_queries[0]
             for search_query in search_queries:
                 results = self._spotify.search(q=search_query, type="track", limit=5)
                 tracks = results.get("tracks", {}).get("items", [])
                 if tracks:
-                    used_query = search_query
                     break
 
             if not tracks:
@@ -537,6 +556,98 @@ class SpotifyController:
     def _spotify_quote(value: str) -> str:
         return value.replace('"', "")
 
+    @staticmethod
+    def _normalize_match_text(value: str | None) -> str:
+        value = unicodedata.normalize("NFKD", value or "")
+        value = "".join(ch for ch in value if not unicodedata.combining(ch))
+        value = value.lower().replace("&", " and ")
+        value = re.sub(r"[^0-9a-zа-яё]+", " ", value)
+        return " ".join(value.split())
+
+    @classmethod
+    def _latinized_text(cls, value: str | None) -> str:
+        normalized = cls._normalize_match_text(value)
+        for source, replacement in ENGLISH_SOUND_ALIASES:
+            normalized = normalized.replace(source, replacement)
+        return " ".join(normalized.translate(CYRILLIC_TO_LATIN).split())
+
+    @classmethod
+    def _playlist_score(cls, playlist: dict, query: str) -> int:
+        wanted = cls._normalize_match_text(query)
+        wanted_latin = cls._latinized_text(query)
+        name = cls._normalize_match_text(playlist.get("name"))
+        name_latin = cls._latinized_text(playlist.get("name"))
+
+        score = 0
+        if wanted and wanted == name:
+            score += 100
+        if wanted_latin and wanted_latin == name_latin:
+            score += 95
+        if wanted and wanted in name:
+            score += 70
+        if wanted_latin and wanted_latin in name_latin:
+            score += 65
+        if wanted and name in wanted:
+            score += 40
+        if wanted_latin and name_latin in wanted_latin:
+            score += 35
+
+        for left in (wanted, wanted_latin):
+            for right in (name, name_latin):
+                if left and right:
+                    score += int(SequenceMatcher(None, left, right).ratio() * 45)
+
+        wanted_words = set(wanted.split()) | set(wanted_latin.split())
+        name_words = set(name.split()) | set(name_latin.split())
+        score += len(wanted_words & name_words) * 8
+        return score
+
+    def _get_user_playlists(self) -> list[dict]:
+        playlists = []
+        limit = 50
+        offset = 0
+
+        while True:
+            page = self._spotify.current_user_playlists(limit=limit, offset=offset)
+            items = page.get("items", [])
+            playlists.extend(items)
+            if not page.get("next"):
+                break
+            offset += limit
+
+        return playlists
+
+    def _search_playlists(self, query: str) -> list[dict]:
+        results = self._spotify.search(q=query, type="playlist", limit=10)
+        return results.get("playlists", {}).get("items", [])
+
+    def _find_playlist(self, query: str) -> dict | None:
+        own_playlists = self._get_user_playlists()
+        candidates = [p for p in own_playlists if p]
+
+        if query:
+            try:
+                candidates.extend(p for p in self._search_playlists(query) if p)
+            except Exception as e:
+                print(f"[Spotify] Поиск публичных плейлистов не сработал: {self._short_error(e)}")
+
+        unique = {}
+        for playlist in candidates:
+            playlist_id = playlist.get("id")
+            if playlist_id and playlist_id not in unique:
+                unique[playlist_id] = playlist
+
+        if not unique:
+            return None
+
+        ranked = sorted(
+            unique.values(),
+            key=lambda playlist: self._playlist_score(playlist, query),
+            reverse=True,
+        )
+        best = ranked[0]
+        return best if self._playlist_score(best, query) > 0 else None
+
     def _build_track_search_queries(self, parsed: dict) -> list[str]:
         raw = parsed.get("raw", "")
         track = parsed.get("track", "")
@@ -579,6 +690,30 @@ class SpotifyController:
         if not parsed.get("artist"):
             return tracks[0]
         return max(tracks, key=lambda track: self._score_track(track, parsed))
+
+    def search_and_play_playlist(self, query: str) -> str:
+        """Найти свой или публичный плейлист по названию и запустить его."""
+        query = self._clean_query_part(query)
+        if not query:
+            return "Не услышал название плейлиста"
+        if not self._ensure_spotipy() or self._spotify is None:
+            return "Плейлисты недоступны без авторизации Spotify"
+
+        try:
+            playlist = self._find_playlist(query)
+            if not playlist:
+                return f"Плейлист '{query}' не найден"
+
+            uri = playlist.get("uri")
+            name = playlist.get("name") or query
+            owner = (playlist.get("owner") or {}).get("display_name") or "Spotify"
+            if not uri:
+                return f"У плейлиста '{name}' нет Spotify URI"
+
+            self._spotify.start_playback(context_uri=uri, device_id=self._get_device_id())
+            return f"Включаю плейлист {name} — {owner}"
+        except Exception as e:
+            return f"Ошибка плейлиста: {self._short_error(e)}"
 
     def volume(self, percent: int) -> str:
         """Установить громкость Spotify (0-100)."""
@@ -712,6 +847,16 @@ def spotify_search_and_play(query: str | None = ""):
     result = _get_sp().search_and_play(query)
     print(f"  [Spotify] {result}")
     failed_prefixes = ("Ошибка", "Ничего", "Поиск недоступен")
+    return (result, not any(result.startswith(prefix) for prefix in failed_prefixes))
+
+
+def spotify_search_and_play_playlist(query: str | None = ""):
+    if not query:
+        return ("Не услышал название плейлиста", False)
+
+    result = _get_sp().search_and_play_playlist(query)
+    print(f"  [Spotify] {result}")
+    failed_prefixes = ("Ошибка", "Плейлист", "Плейлисты недоступны", "Не услышал")
     return (result, not any(result.startswith(prefix) for prefix in failed_prefixes))
 
 

@@ -77,8 +77,8 @@ def _ensure_root():
     return _root
 
 
-def show_random_image():
-    """Show a random image popup — thread-safe.
+def show_image(filename: str):
+    """Show a specific image popup — thread-safe.
 
     Only one popup at a time. Calling this while another popup is visible
     will instantly destroy the old one before showing the new one.
@@ -86,6 +86,28 @@ def show_random_image():
     Uses root.after(0, callback) which is safe to call from any thread.
     The actual tkinter work runs in the background tk thread via mainloop.
     """
+    if not HAS_PIL:
+        return
+
+    if not os.path.exists(IMAGES_DIR):
+        os.makedirs(IMAGES_DIR, exist_ok=True)
+        return
+
+    filepath = os.path.join(IMAGES_DIR, filename)
+    if not os.path.exists(filepath):
+        print(f"[ImageManager] Warning: file not found: {filepath}")
+        return
+
+    try:
+        root = _ensure_root()
+        if root is not None:
+            root.after(0, _show_and_fade, filepath)
+    except Exception:
+        pass
+
+
+def show_random_image():
+    """Show a random image popup — thread-safe."""
     if not HAS_PIL:
         return
 

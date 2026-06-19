@@ -5,7 +5,6 @@ Marci Voice Agent — Talking Ben style
 - Слушает микрофон (Vosk / Google Speech)
 - Распознаёт пробуждение по слову "Марси"
 - Реагирует звуками и картинками
-- Idle-режим с so_long звуком после 10-15 мин тишины
 - Команды ТОЛЬКО из commands.json (через CommandHandler)
 
 Набор команд не зашит в коде — всё в commands.json.
@@ -19,14 +18,13 @@ import re
 import random
 import json
 import os
-import threading
 
 import pyaudio
 import vosk
 import speech_recognition as sr
 
-from sound_manager import play_sound, play_file, stop_all
-from image_manager import show_random_image
+from sound_manager import play_sound, stop_all
+from image_manager import show_image
 from resource_path import resource_path
 from command_handler import CommandHandler
 
@@ -34,15 +32,14 @@ from command_handler import CommandHandler
 # ─── Config ───────────────────────────────────────────────────
 
 VOSK_MODEL_PATH = resource_path("vosk-model-small-ru-0.22")
-RARE_CHANCE = 0.10          # 10% chance for rare sound
-IDLE_MIN_SECS = 10 * 60     # 10 min idle before so_long
-IDLE_MAX_SECS = 15 * 60     # 15 min idle before so_long
+WAKE_IMAGE = "pngpng.png"
+SUCCESS_IMAGE = "pngpng.png"
+ERROR_IMAGE = "marcury.jpg"
 
 
 # ─── State ────────────────────────────────────────────────────
 
 running = True
-so_long_playing = False
 
 cmd_handler = CommandHandler()
 
@@ -85,14 +82,7 @@ def check_stop_command(text: str) -> bool:
 # ─── Sound reaction helpers ───────────────────────────────────
 
 def simple_react() -> str:
-    """Random reaction with 10% rare chance — just like Talking Ben!"""
-    if random.random() < RARE_CHANCE:
-        return "rare"
-    return random.choice(["move", "laugh", "deny", "thanks", "immortality", "damage"])
-
-
-def random_react_exclude_rare() -> str:
-    """Random reaction, but NEVER plays the rare sound."""
+    """Random reaction for phrases that are not commands."""
     return random.choice(["move", "laugh", "deny", "thanks", "immortality", "damage"])
 
 
@@ -212,7 +202,7 @@ def listen_command_google(device_index=None, timeout=5):
 # ─── Main ─────────────────────────────────────────────────────
 
 def main():
-    global running, so_long_playing
+    global running
 
     print()
     print("  🎤 Marci — Talking Ben Style")
@@ -257,17 +247,11 @@ def main():
 
     print("[Marci] 🟢\n")
 
-    # Shared state for idle timer
-    last_interaction = {'time': time.time()}
     state = "idle"
 
     while running:
         try:
             if state == "idle":
-                if so_long_playing:
-                    stop_all()
-                    so_long_playing = False
-
                 if use_vosk:
                     text = listen_with_vosk(model, device_index=device_index, timeout=5)
                     if text:
@@ -275,14 +259,12 @@ def main():
                         
                         if check_stop_command(text):
                             stop_all()
-                            so_long_playing = False
                             continue
                         
                         if check_wake_word(text):
                             print("  ✨ Wake word!")
-                            last_interaction['time'] = time.time()
                             play_sound("wake", blocking=False)
-                            show_random_image()
+                            show_image(WAKE_IMAGE)
                             state = "listening"
                 else:
                     with mic as source:
@@ -294,19 +276,16 @@ def main():
                         text = recognizer.recognize_google(audio, language="ru-RU")
                         if check_stop_command(text):
                             stop_all()
-                            so_long_playing = False
                             continue
                         if check_wake_word(text):
                             print(f"  heard: \"{text}\" ✨")
-                            last_interaction = time.time()
                             play_sound("wake", blocking=True)
+                            show_image(WAKE_IMAGE)
                             state = "listening"
                     except (sr.UnknownValueError, sr.RequestError):
                         pass
 
             elif state == "listening":
-                last_interaction['time'] = time.time()
-                
                 if use_vosk:
                     text = listen_with_vosk(model, device_index=device_index, timeout=6)
                 else:
@@ -321,13 +300,16 @@ def main():
                         # Command was matched
                         if success:
                             print(f"  ✅ Команда '{cmd_name}' выполнена!")
-                            reaction = random_react_exclude_rare()
+                            reaction = "thanks"
+                            image = SUCCESS_IMAGE
                         else:
                             print(f"  ❌ Команда '{cmd_name}' не выполнена!")
                             reaction = "deny"
+                            image = ERROR_IMAGE
                         print(f"  said: \"{text}\" → {reaction}")
-                        play_sound(reaction, blocking=False)
-                        show_random_image()
+                        if cmd_name != "sing":
+                            play_sound(reaction, blocking=False)
+                        show_image(image)
                         state = "idle"
                         print()
                         continue
@@ -336,22 +318,21 @@ def main():
                     if check_stop_command(text):
                         print("  🛑 Stopped!")
                         stop_all()
-                        so_long_playing = False
                         state = "idle"
                         print()
                         continue
 
                     else:
-                        # No command matched — random react but exclude rare
-                        reaction = random_react_exclude_rare()
+                        # No command matched — random non-rare reaction
+                        reaction = simple_react()
                         print(f"  said: \"{text}\" → {reaction}")
                 else:
-                    # No text at all — standard reaction with rare chance
+                    # No text at all — standard non-rare reaction
                     reaction = simple_react()
                     print(f"  → {reaction}")
 
                 play_sound(reaction, blocking=False)
-                show_random_image()
+                show_image(SUCCESS_IMAGE)
 
                 state = "idle"
                 print()
