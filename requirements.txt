@@ -3,3 +3,5 @@ pyaudio
 pygame
 vosk
 Pillow
+swaglyrics
+spotipy

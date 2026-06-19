@@ -208,53 +208,6 @@ def listen_command_google(device_index=None, timeout=5):
         return None
 
 
-# ─── Idle so_long thread ──────────────────────────────────────
-
-def so_long_loop(model, device_index, last_interaction_ref):
-    """
-    Background thread: after 10-15 min idle, play so_long sound.
-    Can be interrupted by stop commands or wake word.
-    """
-    global so_long_playing, running
-    
-    while running:
-        idle_wait = random.randint(IDLE_MIN_SECS, IDLE_MAX_SECS)
-        start_idle = time.time()
-        
-        while running:
-            elapsed = time.time() - start_idle
-            if elapsed >= idle_wait:
-                break
-            
-            if time.time() - last_interaction_ref['time'] < 2:
-                start_idle = time.time()
-                idle_wait = random.randint(IDLE_MIN_SECS, IDLE_MAX_SECS)
-            
-            time.sleep(1)
-        
-        if not running:
-            break
-        
-        so_long_playing = True
-        print("  😴 So long... playing idle sound")
-        play_sound("so_long", blocking=False)
-        show_random_image()
-        
-        while so_long_playing and running:
-            text = listen_with_vosk(model, device_index=device_index, timeout=3)
-            if text:
-                print(f"  heard: \"{text}\"")
-                if check_stop_command(text) or check_wake_word(text):
-                    print("  🛑 Interrupted!")
-                    stop_all()
-                    so_long_playing = False
-                    break
-            if not so_long_playing:
-                break
-            time.sleep(0.1)
-        
-        so_long_playing = False
-
 
 # ─── Main ─────────────────────────────────────────────────────
 
@@ -306,16 +259,6 @@ def main():
 
     # Shared state for idle timer
     last_interaction = {'time': time.time()}
-    
-    # Start so_long idle thread (only with Vosk)
-    if use_vosk:
-        idle_thread = threading.Thread(
-            target=so_long_loop,
-            args=(model, device_index, last_interaction),
-            daemon=True
-        )
-        idle_thread.start()
-
     state = "idle"
 
     while running:
@@ -369,18 +312,11 @@ def main():
                 else:
                     text = listen_command_google(device_index=device_index, timeout=5)
 
-                # Check for stop command
-                if text and check_stop_command(text):
-                    print("  🛑 Stopped!")
-                    stop_all()
-                    so_long_playing = False
-                    state = "idle"
-                    print()
-                    continue
-
-                # Try to process as a command first
                 if text:
-                    cmd_name, success = cmd_handler.process(text)
+                    # Try to process as a command first. This lets phrases like
+                    # "останови музыку" reach Spotify instead of being consumed
+                    # by the generic Marci stop-word check.
+                    cmd_name, success, result_text = cmd_handler.process(text)
                     if cmd_name is not None:
                         # Command was matched
                         if success:
@@ -395,6 +331,16 @@ def main():
                         state = "idle"
                         print()
                         continue
+
+                    # No command matched, so generic stop words can interrupt Marci.
+                    if check_stop_command(text):
+                        print("  🛑 Stopped!")
+                        stop_all()
+                        so_long_playing = False
+                        state = "idle"
+                        print()
+                        continue
+
                     else:
                         # No command matched — random react but exclude rare
                         reaction = random_react_exclude_rare()
